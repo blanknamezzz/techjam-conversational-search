@@ -2,6 +2,11 @@
 
 Build an AI shopping agent that asks useful follow-up questions and recommends the customer's hidden target product within at most 10 turns.
 
+This branch contains an offline-first hybrid implementation. The default V6
+agent combines BM25, local sentence embeddings, conversation-state tracking,
+RRF fusion, and constraint-aware reranking. V7 optionally adds an external LLM
+only for intent and constraint understanding; the LLM never selects product IDs.
+
 ## What You Receive
 
 - A frozen catalog of 50,000 products from the `Clothing_Shoes_and_Jewelry` category of Amazon Reviews 2023.
@@ -88,13 +93,33 @@ Three reproducible variants are available:
 | `v6` | Stronger exact evidence; current default |
 | `v7` | V6 plus confidence-gated online LLM understanding; optional |
 
+### Current results
+
+The fixed public split contains 160 development sessions and 40 validation
+sessions. These metrics are session averages; the private 800-session organizer
+set is not available locally.
+
+| Variant and split | Hit Rate@10 | MRR | MTTC | Technical score |
+|---|---:|---:|---:|---:|
+| Official weak baseline, all 200 public sessions | 0.1250 | 0.068034 | 9.8100 | 0.106710 |
+| V6, 160-session development split | 0.9250 | 0.567493 | 3.3688 | 0.785373 |
+| V6, 40-session validation split | 0.8750 | 0.463115 | 3.2750 | 0.730934 |
+| V7 with LLM, 160-session development split | 0.9375 | 0.563343 | 3.3250 | 0.791253 |
+
+V7 improved development Hit Rate@10 by `0.0125`, but used 209,193
+reported tokens and took approximately 33 minutes with the configured provider.
+V6 therefore remains the default; V7 is an opt-in experiment rather than a
+required runtime dependency. Generated per-run JSON files under
+`reports/experiments/` are ignored by Git and can be reproduced with the commands
+below.
+
 Run a development-split experiment:
 
 ```bash
 python3 scripts/run_experiment.py \
   --variant v6 \
   --split-ids data/splits/task_a_dev_ids.txt \
-  --output reports/experiments/v3_dev.json
+  --output reports/experiments/v6_dev.json
 ```
 
 Run all tests:
@@ -115,12 +140,10 @@ are present. V6 remains the offline default.
 
 ### Optional V7 API experiment
 
-Copy `.env.example` to the Git-ignored `.env` file and insert a newly generated
-key, the provider's OpenAI-compatible base URL, and a model name:
-
-```bash
-cp .env.example .env
-```
+Create a Git-ignored `.env` file in the repository root and insert a newly
+generated key, the provider's OpenAI-compatible base URL, and a model name.
+Never put real credentials in `.env.example`, source code, reports, commits, or
+chat messages.
 
 ```dotenv
 TECHJAM_LLM_API_KEY=replace-with-a-new-key
@@ -188,15 +211,23 @@ Teams may use any legally accessible LLM API or local model. Teams manage their 
 
 ```text
 data/public_set.jsonl             200 labeled development sessions
+data/splits/                      fixed 160/40 development-validation split
 docs/competition_specification.md participant rules and evaluation protocol
 docs/agent_api_contract.json      machine-readable Agent contract
 docs/evaluation_config.json       scoring configuration
 docs/baseline_results.json        reproducible weak-starter reference score
 starter/agent.py                  enhanced offline Agent entry point
 starter/baseline_agent.py         unchanged weak BM25 reference
+starter/state_tracker.py          deterministic multi-turn intent state
+starter/catalog.py                in-memory catalog and SQLite FTS5 BM25
+starter/dense_retriever.py        local MiniLM embedding retrieval
+starter/fusion.py                 weighted reciprocal-rank fusion
+starter/reranker.py               constraint evidence and final ranking
+starter/optional_api.py           guarded OpenAI-compatible V7 client
 scripts/build_dense_index.py      local embedding build command
 scripts/run_experiment.py         split-aware experiment runner
 evaluator/local_evaluator.py      public-set simulator and scorer
+reports/final_method.md           architecture, iterations, and limitations
 ```
 
 ## Judging and Submission Policy
