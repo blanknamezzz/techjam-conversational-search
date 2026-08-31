@@ -1,7 +1,4 @@
 # Shopping Copilot — SCOPE Agent
-=======
-# Thanos Group
-# TechJam Conversational E-Commerce Search Challenge
 
 ## Project Overview
 
