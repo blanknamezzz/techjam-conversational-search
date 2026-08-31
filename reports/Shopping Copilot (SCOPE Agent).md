@@ -1,5 +1,3 @@
-# 1) Written Project Description (via Devpost)
-
 ## Project: Shopping Copilot — SCOPE Agent
 
 **SCOPE** stands for **Stateful Conversational Offline Product Engine**. It is a
@@ -82,6 +80,24 @@ MTTC is better.
 On the fixed validation split, SCOPE increases Hit Rate@10 by `0.775`, increases
 MRR by `0.436795`, reduces MTTC by `6.5` turns, and increases the Technical Score
 by `0.648539` compared with the official Baseline.
+
+## Runtime, Token Usage, and Cost
+
+- Average latency per response: 42.942 ms
+- P50 latency: 32.763 ms
+- P95 latency: 106.168 ms
+- External model/API calls: 0
+- Prompt tokens: 0
+- Completion tokens: 0
+- Estimated model API cost: $0
+
+Latency was measured locally on the complete 200-session public set with the
+submitted `v6` configuration and the local Dense path enabled. The measurement
+covers all 618 calls to `Agent.respond()` and excludes one-time catalog/index and
+Agent initialization. Percentiles are calculated across individual response
+latencies. The benchmark used Python 3.14.6 on macOS 26.6.2 (Apple Silicon); the
+exact latency may vary with evaluator hardware and system load. SCOPE's local
+MiniLM inference incurs compute time but no model API charge.
 
 ## Development Tools Used
 

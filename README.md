@@ -43,6 +43,17 @@ Higher Hit Rate, MRR, and Technical Score are better; lower MTTC is better.
 | Validation — official Baseline | 40 | 0.175000 | 0.117778 | 9.325000 | 0.156333 |
 | Validation — SCOPE Agent | 40 | **0.950000** | **0.554573** | **2.825000** | **0.804872** |
 
+### Runtime and Cost
+
+- Average latency: 42.942 ms/response
+- LLM token usage: 0
+- Estimated model API cost: $0
+
+Measured over 618 `Agent.respond()` calls across the complete 200-session public
+set with the submitted `v6` configuration and local Dense retrieval enabled;
+one-time initialization is excluded. P50 latency was 32.763 ms and P95 latency
+was 106.168 ms on the benchmark machine. Runtime varies by hardware.
+
 ## Setup and Installation Instructions
 
 ### 1. Clone the submission branch
