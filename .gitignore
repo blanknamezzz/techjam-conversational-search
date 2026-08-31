@@ -1,9 +1,16 @@
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
 .DS_Store
 .env
+.env.example
+artifacts/
 results.json
+reports/experiments/
 data/catalog.jsonl
+data/synthetic/
 data/releases/
 # Organizer-only code, private evaluation data, manifests, and build reports.
 organizer/
