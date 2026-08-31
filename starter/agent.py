@@ -66,7 +66,12 @@ class Agent:
         state = self.state_tracker.update(self.sessions[session_id], user_message, turn)
         llm_result = LLMResult(None, error="disabled")
         rewritten_query = ""
-        if self.llm is not None and self.llm.should_call(user_message, turn, state):
+        if self.llm is not None and self.llm.should_call(
+            user_message,
+            turn,
+            state,
+            self.config.llm_trigger_policy,
+        ):
             llm_result = self.llm.analyze(user_message, state)
             if llm_result.analysis is not None:
                 rewritten_query = self._apply_llm_analysis(
@@ -85,10 +90,16 @@ class Agent:
                 channels["dense"] = self.dense.search(query, self.config.dense_top_k)
             except Exception:
                 channels["dense"] = []
+        dense_weight = self.config.dense_rrf_weight
+        if state.override_count:
+            # After an explicit preference reset the query is intentionally
+            # short. Downweight semantic expansion until the new intent has
+            # accumulated enough evidence, reducing stale semantic neighbors.
+            dense_weight *= self.config.override_dense_rrf_scale
         candidates = reciprocal_rank_fusion(
             channels,
             rank_constant=self.config.fusion_k,
-            channel_weights={"bm25": 1.0, "dense": self.config.dense_rrf_weight},
+            channel_weights={"bm25": 1.0, "dense": dense_weight},
         )
 
         ranked = self.reranker.rank(candidates, state) if self.config.enable_rerank else candidates

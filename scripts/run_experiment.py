@@ -24,7 +24,7 @@ def load_split_ids(path: Path | None) -> set[str] | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a reproducible Track 4 experiment")
-    parser.add_argument("--variant", choices=("baseline", "v1", "v2", "v3", "v4", "v5", "v6", "v7"), required=True)
+    parser.add_argument("--variant", choices=("baseline", "v6", "v9"), required=True)
     parser.add_argument("--catalog", default="data/catalog.jsonl")
     parser.add_argument("--dataset", default="data/public_set.jsonl")
     parser.add_argument("--split-ids")
@@ -49,6 +49,7 @@ def main() -> None:
         "wall_seconds": round(time.perf_counter() - started, 3),
         "dense_available": bool(getattr(getattr(agent, "dense", None), "available", False)),
         "llm_available": bool(getattr(getattr(agent, "llm", None), "available", False)),
+        "llm_metrics": agent.llm.metrics() if getattr(agent, "llm", None) is not None else None,
     }
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

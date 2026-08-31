@@ -10,6 +10,7 @@ artifacts/
 results.json
 reports/experiments/
 data/catalog.jsonl
+data/synthetic/
 data/releases/
 # Organizer-only code, private evaluation data, manifests, and build reports.
 organizer/

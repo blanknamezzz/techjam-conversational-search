@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -45,7 +46,7 @@ class LLMResult:
 
 
 class OptionalLLMClient:
-    """Guarded OpenAI-compatible JSON client used only by the V7 experiment."""
+    """Guarded OpenAI-compatible JSON client for optional online variants."""
 
     def __init__(self, env_file: str | Path = ".env") -> None:
         load_local_env(env_file)
@@ -59,20 +60,64 @@ class OptionalLLMClient:
         except ValueError:
             self.timeout = 15.0
         self.available = bool(self.api_key and self.model and self.url)
+        self.call_count = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_latency_ms = 0.0
+        self.errors: dict[str, int] = {}
 
-    def should_call(self, message: str, turn: int, state: SessionState) -> bool:
+    def should_call(
+        self,
+        message: str,
+        turn: int,
+        state: SessionState,
+        policy: str = "first_or_complex",
+    ) -> bool:
         if not self.available:
             return False
         lowered = message.casefold()
-        complex_markers = (
-            "actually", "instead", "rather than", "except", "avoid", "without",
-            "don't", " do not ", "not in", "changed my mind", "first one", "that one",
-        )
-        return turn == 1 or any(marker in lowered for marker in complex_markers) or not state.query_text()
+        no_preference = any(marker in lowered for marker in (
+            "don't have a preference",
+            "don't have an additional preference",
+            "no preference for",
+        ))
+        override_or_reference = any(marker in lowered for marker in (
+            "actually", "instead", "rather than", "changed my mind",
+            "ignore my earlier", "first one", "that one",
+        ))
+        meaningful_negation = not no_preference and any(marker in lowered for marker in (
+            "except", "avoid", "without", "don't want", " do not want", "not in",
+        ))
+        complex_request = override_or_reference or meaningful_negation or not state.query_text()
+        if policy == "complex_only":
+            return complex_request
+        if policy == "exploratory_or_complex":
+            return complex_request or (turn == 1 and state.intent == "browsing")
+        if policy == "first_or_complex":
+            return turn == 1 or complex_request
+        raise ValueError(f"unknown LLM trigger policy: {policy}")
+
+    def metrics(self) -> dict[str, Any]:
+        return {
+            "call_count": self.call_count,
+            "success_count": self.success_count,
+            "error_count": self.error_count,
+            "success_rate": round(self.success_count / self.call_count, 6) if self.call_count else None,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.prompt_tokens + self.completion_tokens,
+            "total_latency_ms": round(self.total_latency_ms, 3),
+            "average_latency_ms": round(self.total_latency_ms / self.call_count, 3) if self.call_count else None,
+            "errors": dict(sorted(self.errors.items())),
+        }
 
     def analyze(self, message: str, state: SessionState) -> LLMResult:
         if not self.available:
             return LLMResult(None, error="disabled")
+        self.call_count += 1
+        started = time.perf_counter()
         payload = {
             "model": self.model,
             "temperature": 0,
@@ -123,13 +168,23 @@ class OptionalLLMClient:
             content = body["choices"][0]["message"]["content"]
             analysis = self._parse_json_content(content)
             usage = body.get("usage") or {}
-            return LLMResult(
+            result = LLMResult(
                 analysis=analysis,
                 prompt_tokens=self._nonnegative_int(usage.get("prompt_tokens")),
                 completion_tokens=self._nonnegative_int(usage.get("completion_tokens")),
             )
         except (HTTPError, URLError, TimeoutError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-            return LLMResult(None, error=type(error).__name__)
+            result = LLMResult(None, error=type(error).__name__)
+        self.total_latency_ms += (time.perf_counter() - started) * 1000.0
+        self.prompt_tokens += result.prompt_tokens
+        self.completion_tokens += result.completion_tokens
+        if result.analysis is not None:
+            self.success_count += 1
+        else:
+            self.error_count += 1
+            error_name = result.error or "UnknownError"
+            self.errors[error_name] = self.errors.get(error_name, 0) + 1
+        return result
 
     @staticmethod
     def _parse_json_content(content: object) -> dict[str, Any]:

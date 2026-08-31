@@ -31,7 +31,11 @@ def rank_of(values: list[str], target: str) -> int | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Classify failures across retrieval, fusion, and ranking")
-    parser.add_argument("--variant", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7"), default="v3")
+    parser.add_argument(
+        "--variant",
+        choices=("v6", "v9"),
+        default="v6",
+    )
     parser.add_argument("--catalog", default="data/catalog.jsonl")
     parser.add_argument("--dataset", default="data/public_set.jsonl")
     parser.add_argument("--split-ids")

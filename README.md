@@ -4,7 +4,7 @@ Build an AI shopping agent that asks useful follow-up questions and recommends t
 
 This branch contains an offline-first hybrid implementation. The default V6
 agent combines BM25, local sentence embeddings, conversation-state tracking,
-RRF fusion, and constraint-aware reranking. V7 optionally adds an external LLM
+RRF fusion, and constraint-aware reranking. V9 optionally adds an external LLM
 only for intent and constraint understanding; the LLM never selects product IDs.
 
 ## What You Receive
@@ -74,24 +74,19 @@ The default `starter.Agent` is an offline-first conversational hybrid retriever:
 
 ```text
 conversation state and clarification
-  -> weighted BM25 Top 160 + local MiniLM Dense Top 160
+  -> weighted BM25 Top 160 + local MiniLM Dense Top 200
   -> weighted reciprocal-rank fusion
   -> MATCH / VIOLATION / UNKNOWN plus exact-phrase constraint reranking
   -> explicit hard-constraint gate
   -> catalog-valid Top 10
 ```
 
-Three reproducible variants are available:
+Two maintained variants are available:
 
 | Variant | Purpose |
 |---|---|
-| `v1` | Stateful clarification and enhanced BM25 only |
-| `v2` | V1 plus equal-weight Dense RRF, retained as an ablation |
-| `v3` | Weighted Hybrid retrieval and constraint reranking |
-| `v4` | V3 with post-override clarification through turn 8 |
-| `v5` | V4 plus exact-constraint phrase evidence |
-| `v6` | Stronger exact evidence; current default |
-| `v7` | V6 plus confidence-gated online LLM understanding; optional |
+| `v6` | Offline-first hybrid search; current default and final validated model |
+| `v9` | V6 plus confidence-gated LLM understanding for exploratory or complex turns |
 
 ### Current results
 
@@ -102,16 +97,17 @@ set is not available locally.
 | Variant and split | Hit Rate@10 | MRR | MTTC | Technical score |
 |---|---:|---:|---:|---:|
 | Official weak baseline, all 200 public sessions | 0.1250 | 0.068034 | 9.8100 | 0.106710 |
-| V6, 160-session development split | 0.9250 | 0.567493 | 3.3688 | 0.785373 |
-| V6, 40-session validation split | 0.8750 | 0.463115 | 3.2750 | 0.730934 |
-| V7 with LLM, 160-session development split | 0.9375 | 0.563343 | 3.3250 | 0.791253 |
+| V6, 160-session development split | 0.9250 | 0.594204 | 3.2438 | 0.795886 |
+| V6, 40-session validation split | 0.9500 | 0.554573 | 2.8250 | 0.804872 |
+| V9 historical LLM run, 160-session development split | 0.9375 | 0.559896 | 3.2625 | 0.791469 |
 
-V7 improved development Hit Rate@10 by `0.0125`, but used 209,193
-reported tokens and took approximately 33 minutes with the configured provider.
-V6 therefore remains the default; V7 is an opt-in experiment rather than a
-required runtime dependency. Generated per-run JSON files under
-`reports/experiments/` are ignored by Git and can be reproduced with the commands
-below.
+The final V6 pass corrected taxonomy phrases being misread as hard constraints,
+moved the open-ended must-have clarification ahead of the size fallback, expanded
+Dense recall to 200 candidates, and reduced Dense influence after an explicit
+intent override. Generated local evaluation data and experiment JSON files are
+Git-ignored. V9 remains an opt-in online experiment rather than a required
+runtime dependency; its historical result predates the final V6 robustness pass
+and should not be treated as a direct final comparison.
 
 Run a development-split experiment:
 
@@ -134,11 +130,11 @@ Run a three-turn demo including an intent override:
 python3 scripts/demo_session.py
 ```
 
-The optional online query-rewrite example in `starter/optional_api.py` is fully
-disabled unless V7 is explicitly selected and all required environment values
+The optional online query-rewrite client in `starter/optional_api.py` is fully
+disabled unless V9 is explicitly selected and all required environment values
 are present. V6 remains the offline default.
 
-### Optional V7 API experiment
+### Optional V9 API experiment
 
 Create a Git-ignored `.env` file in the repository root and insert a newly
 generated key, the provider's OpenAI-compatible base URL, and a model name.
@@ -152,19 +148,19 @@ TECHJAM_LLM_MODEL=your-model-name
 TECHJAM_LLM_TIMEOUT_SECONDS=15
 ```
 
-Run the V7 development experiment:
+Run the best development-scoring online experiment:
 
 ```bash
 python3 scripts/run_experiment.py \
-  --variant v7 \
+  --variant v9 \
   --split-ids data/splits/task_a_dev_ids.txt \
-  --output reports/experiments/v7_api_dev.json
+  --output reports/experiments/v9_api_dev.json
 ```
 
-If credentials are missing, invalid, rate-limited, or time out, V7 falls back
+If credentials are missing, invalid, rate-limited, or time out, V9 falls back
 to V6 for that turn. Never paste a real key into Python, Markdown, JSON, Git, or
-chat messages. See `reports/final_method.md` for results, costs, limitations,
-and fallback behavior.
+chat messages. See `reports/Shopping Copilot (SCOPE Agent).md` for the submitted
+architecture, results, limitations, and fallback behavior.
 
 ## Agent Interface
 
@@ -207,6 +203,36 @@ Only exact `parent_asin` equality produces a hit. Core metrics are also reported
 
 Teams may use any legally accessible LLM API or local model. Teams manage their own credentials and must never commit API keys. Model choice, estimated cost, token usage, and latency must be disclosed. Token usage is a feasibility metric, not part of the core technical score. The organizer does not provide or reimburse model API credits; teams are responsible for any costs incurred through optional external services.
 
+## Limitations and Future Improvements
+
+- The fixed public validation split contains only 40 sessions, so the private
+  organizer set remains the decisive generalization test.
+- Deterministic extraction may miss complex negation, comparison, and relational
+  requirements.
+- The final reranker is an interpretable weighted model rather than a trained
+  cross-encoder or learning-to-rank system.
+- Dense model and index artifacts are not stored in ordinary Git; they must be
+  built during setup or supplied as a documented release asset.
+- The optional online language-model path adds latency, token cost, and provider
+  availability risk, so the official model remains offline-first.
+
+With more time, we would evaluate a compact cross-encoder on a larger frozen
+holdout, learn calibrated retrieval weights, add more varied human-written
+conversation tests, and investigate privacy-reviewed profile personalization.
+
+## Team Contributions
+
+Replace the member labels with the team's real names before the final Devpost
+submission.
+
+| Team member | Primary contribution |
+|---|---|
+| Member A | Technical lead, Agent orchestration, integration, and final runtime contract |
+| Member B | Catalog processing, BM25, structured retrieval, and data validation |
+| Member C | Intent recognition, constraint extraction, conversation state, and clarification policy |
+| Member D | Local semantic retrieval, embedding index, and RRF candidate fusion |
+| Member E | Constraint-aware reranking, evaluation, regression tests, and experiment analysis |
+
 ## Files
 
 ```text
@@ -223,11 +249,13 @@ starter/catalog.py                in-memory catalog and SQLite FTS5 BM25
 starter/dense_retriever.py        local MiniLM embedding retrieval
 starter/fusion.py                 weighted reciprocal-rank fusion
 starter/reranker.py               constraint evidence and final ranking
-starter/optional_api.py           guarded OpenAI-compatible V7 client
+starter/optional_api.py           guarded OpenAI-compatible V9 client
 scripts/build_dense_index.py      local embedding build command
 scripts/run_experiment.py         split-aware experiment runner
+scripts/build_synthetic_eval_set.py local-only robustness-set generator
+scripts/select_hard_synthetic_eval_set.py frozen tune/holdout selector
 evaluator/local_evaluator.py      public-set simulator and scorer
-reports/final_method.md           architecture, iterations, and limitations
+reports/Shopping Copilot (SCOPE Agent).md English project description for submission
 ```
 
 ## Judging and Submission Policy

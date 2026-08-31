@@ -10,7 +10,7 @@ from starter.config import AgentConfig
 
 
 class AgentContractTest(unittest.TestCase):
-    def test_v1_agent_returns_catalog_valid_contract(self) -> None:
+    def test_v6_agent_returns_catalog_valid_contract(self) -> None:
         products = [
             {
                 "parent_asin": "A",
@@ -36,7 +36,7 @@ class AgentContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.jsonl"
             path.write_text("".join(json.dumps(row) + "\n" for row in products), encoding="utf-8")
-            agent = Agent(path, AgentConfig.for_variant("v1"))
+            agent = Agent(path, AgentConfig.for_variant("v6"))
             agent.reset("session", {"summary": "prefers durable products"})
             response = agent.respond("session", "I'm looking for black hiking boots.", 1, 10)
         self.assertIsInstance(response["message"], str)

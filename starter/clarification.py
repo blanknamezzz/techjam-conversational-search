@@ -24,7 +24,12 @@ class ClarificationPolicy:
             return None, "Here are the strongest matches for your current preferences."
 
         present = set(state.constraints)
-        priority = ["material", "feature", "color", "size", "other"]
+        # Ask a broad must-have question before a size fallback. In product
+        # search, users frequently have a second feature, use-case, or care
+        # requirement that does not fit a fixed slot. Asking for it prevents
+        # the four-question budget from being consumed by an irrelevant size
+        # question while still retaining size as a final fallback.
+        priority = ["material", "feature", "color", "other", "size"]
         for attribute in priority:
             if attribute in state.no_preference:
                 continue

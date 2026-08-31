@@ -48,3 +48,21 @@ class StateTrackerTest(unittest.TestCase):
             2,
         )
         self.assertIn("material", self.state.no_preference)
+
+    def test_category_price_phrase_is_not_promoted_to_budget(self) -> None:
+        self.tracker.update(
+            self.state,
+            "I'm looking for Handbags Under $30, but I'm still exploring.",
+            1,
+        )
+        self.assertEqual(self.state.category, "Handbags Under $30")
+        self.assertNotIn("budget", self.state.constraints)
+
+    def test_no_size_preference_does_not_create_size_constraint(self) -> None:
+        self.tracker.update(
+            self.state,
+            "I don't have an additional preference for size.",
+            2,
+        )
+        self.assertIn("size", self.state.no_preference)
+        self.assertNotIn("size", self.state.constraints)

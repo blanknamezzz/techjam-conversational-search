@@ -12,7 +12,10 @@ PRICE_MAX_RE = re.compile(
     re.I,
 )
 PRICE_AROUND_RE = re.compile(r"(?:budget around|around)\s*\$\s*(\d+(?:\.\d+)?)", re.I)
-SIZE_RE = re.compile(r"\b(?:size|width)\s*[:=]?\s*([a-z0-9.+-]+(?:\s+[a-z0-9.+-]+)?)", re.I)
+SIZE_RE = re.compile(
+    r"\b(?:size|width)\s*[:=]?\s*([a-z0-9][a-z0-9.+-]*(?:\s+[a-z0-9][a-z0-9.+-]*)?)",
+    re.I,
+)
 
 
 class StateTracker:
@@ -38,12 +41,21 @@ class StateTracker:
         if category_match:
             state.category = category_match.group(1).strip(" ,.;")
 
+        # The evaluator's opening utterance embeds the catalog taxonomy after
+        # "looking for".  A taxonomy such as "Handbags Under $30" describes
+        # the category name; it is not an independently stated hard budget.
+        # Keep it for retrieval, but exclude it from constraint extraction.
+        constraint_text = text
+        if category_match:
+            start, end = category_match.span(1)
+            constraint_text = normalize_text(message[:start] + " " + message[end:])
+
         if "still exploring" in text or "browse" in text or "recommend" in text:
             state.intent = "browsing"
         if any(marker in text for marker in ("key requirement", "what i need is", "must", "cannot")):
             state.intent = "buying"
 
-        self._record_no_preference(state, text)
+        no_preference_reply = self._record_no_preference(state, text)
         extracted_spans: list[str] = []
 
         for marker, hard in (
@@ -51,51 +63,63 @@ class StateTracker:
             ("what i need is:", True),
             ("for that, what matters is:", False),
         ):
-            if marker in text:
-                tail = text.split(marker, 1)[1].strip(" .")
+            if marker in constraint_text:
+                tail = constraint_text.split(marker, 1)[1].strip(" .")
                 values = [part.strip(" .") for part in tail.split(";") if part.strip(" .")]
                 for value in values:
                     self._add_value(state, value, turn, hard=hard)
                 extracted_spans.extend(values)
 
-        price_match = PRICE_MAX_RE.search(text)
-        if price_match:
-            self._add_value(
-                state,
-                f"budget under ${price_match.group(1)}",
-                turn,
-                hard=True,
-                replace=True,
-            )
-        elif (around_match := PRICE_AROUND_RE.search(text)):
-            self._add_value(
-                state,
-                f"budget around ${around_match.group(1)}",
-                turn,
-                hard=False,
-                replace=True,
-            )
+        if not no_preference_reply:
+            price_match = PRICE_MAX_RE.search(constraint_text)
+            if price_match:
+                self._add_value(
+                    state,
+                    f"budget under ${price_match.group(1)}",
+                    turn,
+                    hard=True,
+                    replace=True,
+                )
+            elif (around_match := PRICE_AROUND_RE.search(constraint_text)):
+                self._add_value(
+                    state,
+                    f"budget around ${around_match.group(1)}",
+                    turn,
+                    hard=False,
+                    replace=True,
+                )
 
-        tokens = set(re.findall(r"[a-z0-9]+", text))
-        for color in sorted(tokens & COLORS):
-            if self._has_constraint(state, "color", color):
-                continue
-            self._add_value(state, color, turn, hard="must" in text, replace=is_override)
-        for material in sorted(tokens & MATERIALS):
-            if self._has_constraint(state, "material", material):
-                continue
-            negated = bool(re.search(rf"\b(?:no|not|avoid|without)\s+{re.escape(material)}\b", text))
-            self._add_value(
-                state,
-                material,
-                turn,
-                hard=negated or "must" in text,
-                negated=negated,
-                replace=is_override,
-            )
+            tokens = set(re.findall(r"[a-z0-9]+", constraint_text))
+            for color in sorted(tokens & COLORS):
+                if self._has_constraint(state, "color", color):
+                    continue
+                self._add_value(state, color, turn, hard="must" in constraint_text, replace=is_override)
+            for material in sorted(tokens & MATERIALS):
+                if self._has_constraint(state, "material", material):
+                    continue
+                negated = bool(
+                    re.search(
+                        rf"\b(?:no|not|avoid|without)\s+{re.escape(material)}\b",
+                        constraint_text,
+                    )
+                )
+                self._add_value(
+                    state,
+                    material,
+                    turn,
+                    hard=negated or "must" in constraint_text,
+                    negated=negated,
+                    replace=is_override,
+                )
 
-        if size_match := SIZE_RE.search(text):
-            self._add_value(state, f"size {size_match.group(1)}", turn, hard="must" in text, replace=True)
+            if size_match := SIZE_RE.search(constraint_text):
+                self._add_value(
+                    state,
+                    f"size {size_match.group(1)}",
+                    turn,
+                    hard="must" in constraint_text,
+                    replace=True,
+                )
 
         self._capture_free_text(state, message, extracted_spans, is_override)
         return state
@@ -133,13 +157,15 @@ class StateTracker:
         )
 
     @staticmethod
-    def _record_no_preference(state: SessionState, text: str) -> None:
+    def _record_no_preference(state: SessionState, text: str) -> bool:
         match = re.search(
             r"(?:no preference|don't have (?:a|an additional) preference) for\s+([a-z_]+)",
             text,
         )
         if match:
             state.no_preference.add(match.group(1))
+            return True
+        return False
 
     @staticmethod
     def _capture_free_text(
